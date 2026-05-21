@@ -1,0 +1,56 @@
+name: CI-CD Pipeline
+
+on:
+  push:
+    branches: [ main ]
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+
+    env:
+      IMAGE_NAME: html-app
+      IMAGE_TAG: latest
+      DOCKER_REGISTRY: docker.io
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Login Docker Hub
+        uses: docker/login-action@v3
+        with:
+          username: ${{ secrets.DOCKER_USERNAME }}
+          password: ${{ secrets.DOCKER_PASSWORD }}
+
+      - name: Build image
+        run: |
+          docker build -t $DOCKER_REGISTRY/${{ secrets.DOCKER_USERNAME }}/$IMAGE_NAME:$IMAGE_TAG .
+
+      - name: Push image
+        run: |
+          docker push $DOCKER_REGISTRY/${{ secrets.DOCKER_USERNAME }}/$IMAGE_NAME:$IMAGE_TAG
+      - name: Scan image with Trivy
+        uses: aquasecurity/trivy-action@master
+        with:
+          image-ref: docker.io/${{ secrets.DOCKER_USERNAME }}/html-app:latest
+          severity: HIGH,CRITICAL
+          exit-code: '1'
+          deploy:
+    runs-on: self-hosted
+    needs: build
+
+    steps:
+      - name: Pull image
+        run: docker pull docker.io/${{ secrets.DOCKER_USERNAME }}/html-app:latest
+
+      - name: Stop container
+        run: docker stop html-container || true
+
+      - name: Remove container
+        run: docker rm html-container || true
+
+      - name: Run container
+        run: |
+          docker run -d -p 80:80 --name html-container \
+          docker.io/${{ secrets.DOCKER_USERNAME }}/html-app:latest
